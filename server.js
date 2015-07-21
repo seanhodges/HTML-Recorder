@@ -30,7 +30,14 @@ app.get('/video', function (req, res) {
 		file.pipe(res);
 		return;
 	}
+	doGet('video', req, res);
+});
 
+app.get('/static', function (req, res) {
+	doGet('static', req, res);
+});
+
+function doGet(format, req, res) {
 	var url = req.query.src;
 	var width = req.query.width;
 	var height = req.query.height;
@@ -42,31 +49,26 @@ app.get('/video', function (req, res) {
 		}
 		else {
 			console.log(stdout, stderr);
+
 			var outputFile = path.resolve(__dirname,"out.mp4")
+			var mimeType = 'video/mp4';
+			if (format === 'static') {
+				outputFile = path.resolve(__dirname, 'temp', "output05.png");
+				mimeType = 'image/png';
+			}
+
 			var stats = fs.statSync(outputFile)
 			var size = stats["size"]
-			console.log(size);
+			console.log(mimeType, size);
+
 			res.writeHead(200, { 
-				"Content-Length": chunksize, 
-				"Content-Type": 'video/mp4' 
+				"Content-Length": size, 
+				"Content-Type": mimeType
 			});
 			fs.createReadStream(outputFile).pipe(res);
-
-//			fs.readFile(outputFile, function (err, data) {
-//				if (err) throw err;
-//
-//				res.writeHead(206, { 
-//					"Content-Range": "bytes " + start + "-" + end + "/" + total, 
-//					"Accept-Ranges": "bytes", 
-//					"Content-Length": chunksize, 
-//					"Content-Type": 'video/mp4' 
-//				});
-//				res.end(data, "binary");
-//			});
-
 		}
 	});
-});
+};
 
 var server = app.listen(17142, function () {
 	var host = server.address().address;
