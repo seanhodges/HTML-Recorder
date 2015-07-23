@@ -41,7 +41,12 @@ function doGet(format, req, res) {
 	var url = req.query.src;
 	var width = req.query.width;
 	var height = req.query.height;
-	var cmd = path.resolve(__dirname, 'html5video.sh') + ' ' + url + ' ' + width + ' ' + height;
+	var extra = '';
+	var targetFrame = req.query.frame || '10';
+	if (format === 'static') {
+		extra = ' true ' + (req.query.frame || '');
+	}
+	var cmd = path.resolve(__dirname, 'html5video.sh') + ' ' + url + ' ' + width + ' ' + height + extra;
 	console.log(cmd);
 	cp.exec(cmd, function(error, stdout, stderr) {
 		if (error) {
@@ -53,7 +58,7 @@ function doGet(format, req, res) {
 			var outputFile = path.resolve(__dirname,"out.mp4")
 			var mimeType = 'video/mp4';
 			if (format === 'static') {
-				outputFile = path.resolve(__dirname, 'temp', "output05.png");
+				outputFile = path.resolve(__dirname, 'temp', "output" + targetFrame + ".png");
 				mimeType = 'image/png';
 			}
 
