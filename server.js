@@ -46,7 +46,10 @@ function doGet(format, req, res) {
 	var width = req.query.width;
 	var height = req.query.height;
 	var extra = req.query.frame || '10';
-	var cmd = path.resolve(__dirname, 'html5video.sh') + ' ' + url + ' ' + width + ' ' + height + ' ' + format + ' ' + extra;
+
+	var script = 'html5video.sh';
+	if (url.indexOf('swf') > -1) script = 'swfvideo.sh';
+	var cmd = path.resolve(__dirname, script) + ' ' + url + ' ' + width + ' ' + height + ' ' + format + ' ' + extra;
 	console.log(cmd);
 	cp.exec(cmd, function(error, stdout, stderr) {
 		if (error) {
