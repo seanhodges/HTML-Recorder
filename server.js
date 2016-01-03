@@ -56,6 +56,45 @@ function doGet(format, req, res) {
 	}
 	console.log(cmd);
 
+	var util  = require('util'),
+            spawn = require('child_process').spawn,
+            script    = spawn(path.resolve(__dirname, script), [url, width, height, format, extra]);
+
+        script.stdout.on('data', function (data) {
+                console.log('stdout: ' + data);
+        });
+
+        script.stderr.on('data', function (data) {
+                console.log('stderr: ' + data);
+        });
+
+        script.on('exit', function (code) {
+                console.log('child process exited with code ' + code);
+                if (code != 0) return;
+
+                var outputFile = path.resolve(__dirname,"out.mp4")
+                var mimeType = 'video/mp4';
+                if (format === 'png') {
+                        outputFile = path.resolve(__dirname, 'temp', "poster.png");
+                        mimeType = 'image/png';
+                }
+                else if (format === 'gif') {
+                        outputFile = path.resolve(__dirname, 'out.gif');
+                        mimeType = 'image/gif';
+                }
+
+                var stats = fs.statSync(outputFile)
+                var size = stats["size"]
+                console.log(mimeType, size);
+
+                res.writeHead(200, {
+                        "Content-Length": size,
+                        "Content-Type": mimeType
+                });
+                fs.createReadStream(outputFile).pipe(res);
+        });
+
+        /*
 	cp.exec(cmd, function(error, stdout, stderr) {
 		if (error) {
 			res.send('Errored: ' + error);
@@ -86,6 +125,7 @@ function doGet(format, req, res) {
 			fs.createReadStream(outputFile).pipe(res);
 		}
 	});
+	*/
 };
 
 var server = app.listen(17142, function () {
