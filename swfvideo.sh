@@ -7,7 +7,7 @@ MODE=$4
 EXTRA=$5
 
 if [ "$MODE" == "png" ]; then
-	wget --output-document=temp/input.swf $URL
+	wget --no-check-certificate --output-document=temp/input.swf $URL
 
 	FRAME=$EXTRA
 	if [ "$FRAME" == "" ]; then
