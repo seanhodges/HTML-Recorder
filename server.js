@@ -30,25 +30,32 @@ app.get('/video', function (req, res) {
 		file.pipe(res);
 		return;
 	}
-	doGet('video', req, res);
+	doGet('mp4', req, res);
 });
 
 app.get('/static', function (req, res) {
-	doGet('static', req, res);
+	doGet('png', req, res);
+});
+
+app.get('/animation', function (req, res) {
+	doGet('gif', req, res);
 });
 
 function doGet(format, req, res) {
 	var url = req.query.src;
 	var width = req.query.width;
 	var height = req.query.height;
-	
-	var cmd = path.resolve(__dirname, 'html5video.sh') + ' ' + url + ' ' + width + ' ' + height;
+	var extra = req.query.frame || '10';
 
-	if (format == 'static') {
+	var script = 'html5video.sh';
+	if (url.indexOf('swf') > -1) script = 'swfvideo.sh';
+	var cmd = path.resolve(__dirname, script) + ' ' + url + ' ' + width + ' ' + height + ' ' + format + ' ' + extra;
+
+	if (format == 'png') {
 		cmd = path.resolve(__dirname, 'takeposter.sh') + ' ' + url;
 	}
-
 	console.log(cmd);
+
 	cp.exec(cmd, function(error, stdout, stderr) {
 		if (error) {
 			res.send('Errored: ' + error);
@@ -59,9 +66,13 @@ function doGet(format, req, res) {
 			var outputFile = path.resolve(__dirname,"out.mp4")
 			var mimeType = 'video/mp4';
 
-			if (format === 'static') {
+			if (format === 'png') {
 				outputFile = path.resolve(__dirname, 'temp', "poster.png");
 				mimeType = 'image/png';
+			}
+			else if (format === 'gif') {
+				outputFile = path.resolve(__dirname, 'out.gif');
+				mimeType = 'image/gif';
 			}
 
 			var stats = fs.statSync(outputFile)
