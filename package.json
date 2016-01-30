@@ -1,0 +1,28 @@
+{
+    "name": "output-convertor",
+    "version": "0.0.2",
+    "description": "An example module to illustrate the usage of a package.json",
+    "author": "Your Name <you.name@example.org>",
+    "contributors": [{
+        "name": "Foo Bar",
+        "email": "foo.bar@example.com"
+    }],
+    "bin": {
+        "module-name": "./bin/module-name"
+    },
+    "scripts": {
+        "test": "mocha",
+        "start": "node server.js"
+    },
+    "main": "server.js",
+    "dependencies": {
+        "express": "4.13.1",
+        "multer": "1.1.0",
+        "yauzl": "2.4.1",
+        "mkdirp": "0.5.1"
+    },
+    "devDependencies": {
+        "mocha": "*"
+    },
+    "private": true
+}
