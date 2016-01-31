@@ -45,7 +45,7 @@ app.get('/convert/:filename', function (req, res) {
     doGenerate(format, url, width, height, extra, res);
 });
 
-app.post('/convert/:filename', upload.single('Bathrooms_StyleA_MPU.zip'), function (req, res) {
+app.post('/convert/:filename', upload.single('creative'), function (req, res) {
     var format = path.extname(req.params.filename).substring(1);
 
     // Unpack the zip
@@ -54,7 +54,7 @@ app.post('/convert/:filename', upload.single('Bathrooms_StyleA_MPU.zip'), functi
         return;
     }
     unpack(req.file.path, function(unpacked) {
-        var url = 'file:///' + path.resolve(unpacked, 'Bathrooms_StyleA_MPU.html');
+        var url = 'file:///' + unpacked;
 
         var width = req.query.width;
         var height = req.query.height;
@@ -63,46 +63,9 @@ app.post('/convert/:filename', upload.single('Bathrooms_StyleA_MPU.zip'), functi
     });
 });
 
-/*
-app.get('/video', function (req, res) {
-	if (req.headers.range) {
-		var outputFile = path.resolve(__dirname,'out.mp4')
-		var stats = fs.statSync(outputFile)
-		var size = stats['size']
-		var range = req.headers.range;
-
-		var parts = range.replace(/bytes=/, '').split('-');
-		var partialstart = parts[0];
-		var partialend = parts[1];
-
-		var start = parseInt(partialstart, 10);
-		var end = partialend ? parseInt(partialend, 10) : size-1;
-		var chunksize = (end-start)+1;
-
-		var file = fs.createReadStream(outputFile, {start: start, end: end});
-		res.writeHead(206, { 
-			'Content-Range': 'bytes ' + start + '-' + end + '/' + size, 
-			'Accept-Ranges': 'bytes', 
-			'Content-Length': chunksize, 
-			'Content-Type': 'video/mp4' 
-		});
-		file.pipe(res);
-		return;
-	}
-	doGet('mp4', req, res);
-});
-
-app.get('/static', function (req, res) {
-	doGet('png', req, res);
-});
-
-app.get('/animation', function (req, res) {
-	doGet('gif', req, res);
-});
-*/
-
 function unpack(file, successCallback) {
     var rootPath = 'temp/zipcontents/';
+    var resultPath = rootPath;
     mkdirp(path.dirname(rootPath));
 
     yauzl.open(file, {lazyEntries: true}, function(err, zipfile) {
@@ -123,6 +86,11 @@ function unpack(file, successCallback) {
                         if (err) throw err;
                         readStream.pipe(fs.createWriteStream(rootPath + entry.fileName));
                         readStream.on("end", function() {
+                            if (entry.fileName.indexOf('.html') > -1 && entry.fileName.indexOf('__MACOSX') == -1) {
+                                // Found the HTML file
+                                resultPath = path.resolve(rootPath + entry.fileName);
+                                console.log(resultPath);
+                            }
                             zipfile.readEntry();
                         });
                     });
@@ -134,7 +102,7 @@ function unpack(file, successCallback) {
         });
         zipfile.once('end', function() {
             zipfile.close();
-            successCallback.call(this, rootPath);
+            successCallback.call(this, resultPath);
         });
         zipfile.readEntry();
     });
