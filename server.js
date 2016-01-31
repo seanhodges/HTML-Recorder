@@ -10,7 +10,7 @@ var upload = multer({ dest: 'temp/' });
 var app = express();
 
 app.get('/convert/:filename', function (req, res) {
-    var format = path.extname(req.params.filename);
+    var format = path.extname(req.params.filename).substring(1);
 
     if (req.headers.range) {
         // Streaming a video back that has already been generated
@@ -45,19 +45,21 @@ app.get('/convert/:filename', function (req, res) {
     doGenerate(format, url, width, height, extra, res);
 });
 
-app.post('/convert/:filename', upload.single('creative'), function (req, res) {
-    var format = path.extname(req.params.filename);
+app.post('/convert/:filename', upload.single('Bathrooms_StyleA_MPU.zip'), function (req, res) {
+    var format = path.extname(req.params.filename).substring(1);
 
     // Unpack the zip
     if (!req.file || req.file.size <= 0) {
         res.status(500).send({ error: 'No input creative provided' });
+        return;
     }
     unpack(req.file.path, function(unpacked) {
-        var url = 'file://' + unpacked;
+        var url = 'file:///' + path.resolve(unpacked, 'Bathrooms_StyleA_MPU.html');
+
         var width = req.query.width;
         var height = req.query.height;
         var extra = req.query.frame || '10';
-        doGenerate(format, url, width, height, extra);
+        doGenerate(format, url, width, height, extra, res);
     });
 });
 
@@ -99,11 +101,11 @@ app.get('/animation', function (req, res) {
 });
 */
 
-function unpack(path, successCallback) {
-    var rootPath = 'test/zipcontents/';
+function unpack(file, successCallback) {
+    var rootPath = 'temp/zipcontents/';
     mkdirp(path.dirname(rootPath));
 
-    yauzl.open(path, {lazyEntries: true}, function(err, zipfile) {
+    yauzl.open(file, {lazyEntries: true}, function(err, zipfile) {
         if (err) throw err;
         zipfile.on("entry", function(entry) {
             if (/\/$/.test(entry.fileName)) {
@@ -139,6 +141,9 @@ function unpack(path, successCallback) {
 }
 
 function doGenerate(format, url, width, height, extra, res) {
+    url = url.replace(/ /g, '%20');
+    console.log(format + ' ' + url);
+
     // Run the appropriate script
 	var scriptName = 'html5video.sh';
 	if (url.indexOf('swf') > -1) scriptName = 'swfvideo.sh';
@@ -150,6 +155,7 @@ function doGenerate(format, url, width, height, extra, res) {
 	}
 	console.log(cmd);*/
 
+    console.log(path.resolve(__dirname, scriptName));
 	var spawn = cp.spawn;
     var script = spawn(path.resolve(__dirname, scriptName), [url, width, height, format, extra]);
 
