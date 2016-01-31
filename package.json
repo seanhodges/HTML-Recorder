@@ -23,7 +23,9 @@
         "rimraf": "2.5.1"
     },
     "devDependencies": {
-        "mocha": "*"
+        "mocha": "*",
+        "superagent": "*",
+        "chai": "2.1.0"
     },
     "private": true
 }
