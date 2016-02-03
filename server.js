@@ -6,11 +6,14 @@ var multer  = require('multer');
 var yauzl = require('yauzl');
 var mkdirp = require('mkdirp');
 var rimraf = require('rimraf');
+var uuid = require('uuid');
 
 var upload = multer({ dest: 'temp/' });
 var app = express();
 
 app.get('/convert/:filename', function (req, res) {
+    var convertId = generateConvertId(req);
+    console.time(convertId);
     var format = path.extname(req.params.filename).substring(1);
 
     if (req.headers.range) {
@@ -43,12 +46,14 @@ app.get('/convert/:filename', function (req, res) {
     var width = req.query.width;
     var height = req.query.height;
     var extra = req.query.frame || '10';
-    doGenerate(format, url, width, height, extra, function() {
-        writeResult(format, res);
+    doGenerate(convertId, format, url, width, height, extra, function() {
+        writeResult(convertId, format, res);
     });
 });
 
 app.post('/convert/:filename', upload.single('creative'), function (req, res) {
+    var convertId = generateConvertId(req);
+    console.time(convertId);
     var format = path.extname(req.params.filename).substring(1);
 
     // Unpack the zip
@@ -56,23 +61,36 @@ app.post('/convert/:filename', upload.single('creative'), function (req, res) {
         res.status(500).send({ error: 'No input creative provided' });
         return;
     }
-    unpack(req.file.path, function(unpacked) {
+    unpack(convertId, req.file.path, function(unpacked) {
         var url = 'file:///' + unpacked;
 
         var width = req.query.width;
         var height = req.query.height;
         var extra = req.query.frame || '10';
-        doGenerate(format, url, width, height, extra, function() {
-            fs.unlink(req.file.path);
-            rimraf('temp/zipcontents', function(err) {
-                if (err) { throw err; }
-                writeResult(format, res);
+        doGenerate(convertId, format, url, width, height, extra, function() {
+            // Clean up POST data and send result
+            fs.unlink(req.file.path, function() {
+                rimraf('temp/zipcontents', function (err) {
+                    if (err) {
+                        throw err;
+                    }
+                    writeResult(convertId, format, res);
+                });
             });
         });
     });
 });
 
-function unpack(file, successCallback) {
+function generateConvertId(req) {
+    var ip = req.ip;
+    // Strip out any ipv6 preamble
+    if (ip.indexOf('::') > -1) ip = ip.substring(ip.lastIndexOf(':') + 1);
+    ip = ip.replace(/[!\W]/g, '.');
+    return 'convert-task-' + ip + '-' + uuid.v4();
+}
+
+function unpack(convertId, file, successCallback) {
+    console.time(convertId + '-unpack');
     var rootPath = 'temp/zipcontents/';
     var resultPath = rootPath;
     mkdirp(path.dirname(rootPath));
@@ -111,13 +129,15 @@ function unpack(file, successCallback) {
         });
         zipfile.once('end', function() {
             zipfile.close();
+            console.timeEnd(convertId + '-unpack');
             successCallback.call(this, resultPath);
         });
         zipfile.readEntry();
     });
 }
 
-function doGenerate(format, url, width, height, extra, callback) {
+function doGenerate(convertId, format, url, width, height, extra, callback) {
+    console.time(convertId + '-generate');
     url = url.replace(/ /g, '%20');
     console.log(format + ' ' + url);
 
@@ -128,7 +148,7 @@ function doGenerate(format, url, width, height, extra, callback) {
 
     console.log(path.resolve(__dirname, scriptName));
 	var spawn = cp.spawn;
-    var script = spawn(path.resolve(__dirname, scriptName), [url, width, height, format, extra]);
+    var script = spawn(path.resolve(__dirname, scriptName), [convertId, url, width, height, format, extra]);
 
     script.stdout.on('data', function (data) {
         console.log('stdout: ' + data);
@@ -141,15 +161,17 @@ function doGenerate(format, url, width, height, extra, callback) {
     script.on('exit', function (code) {
         console.log('child process exited with code ' + code);
         if (code != 0) return;
+        console.timeEnd(convertId + '-generate');
         callback.call(this);
     });
 }
 
-function writeResult(format, res) {
-    var outputFile = path.resolve(__dirname,'out.mp4')
+function writeResult(convertId, format, res) {
+    console.time(convertId + '-write-output');
+    var outputFile = path.resolve(__dirname,'out.mp4');
     var mimeType = 'video/mp4';
     if (format === 'png') {
-        outputFile = path.resolve(__dirname, 'temp', 'poster.png');
+        outputFile = path.resolve(__dirname, 'temp', 'poster-' + convertId + '.png');
         mimeType = 'image/png';
     }
     else if (format === 'gif') {
@@ -166,6 +188,12 @@ function writeResult(format, res) {
         'Content-Type': mimeType
     });
     fs.createReadStream(outputFile).pipe(res);
+
+    // Clean up
+    fs.unlink(outputFile);
+
+    console.timeEnd(convertId + '-write-output');
+    console.timeEnd(convertId);
 }
 
 var server = app.listen(17142, function () {

@@ -20,7 +20,8 @@
         "multer": "1.1.0",
         "yauzl": "2.4.1",
         "mkdirp": "0.5.1",
-        "rimraf": "2.5.1"
+        "rimraf": "2.5.1",
+        "uuid": "2.0.1"
     },
     "devDependencies": {
         "mocha": "*",

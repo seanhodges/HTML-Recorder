@@ -1,3 +1,3 @@
 #!/bin/bash
 rm -f temp/poster.png
-phantomjs ./takeposter.js $1
+phantomjs --web-security=false ./takeposter.js $1 $2
