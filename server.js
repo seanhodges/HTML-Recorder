@@ -113,10 +113,11 @@ function unpack(convertId, file, successCallback) {
                         if (err) throw err;
                         readStream.pipe(fs.createWriteStream(rootPath + entry.fileName));
                         readStream.on('end', function() {
-                            if (entry.fileName.indexOf('.html') > -1 && entry.fileName.indexOf('/') == -1) {
+                            console.log('Unpacking file: ' + entry.fileName);
+                            if (entry.fileName.indexOf('.html') > -1 && entry.fileName.indexOf('publish') == -1) {
                                 // Found the HTML file
                                 resultPath = path.resolve(rootPath + entry.fileName);
-                                console.log(resultPath);
+                                console.log('Found HTML page: ' + resultPath);
                             }
                             zipfile.readEntry();
                         });
