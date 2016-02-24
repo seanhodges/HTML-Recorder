@@ -14,71 +14,94 @@ var app = express();
 app.get('/convert/:filename', function (req, res) {
     var convertId = generateConvertId(req);
     console.time(convertId);
-    var format = path.extname(req.params.filename).substring(1);
+    try {
+        var format = path.extname(req.params.filename).substring(1);
 
-    if (req.headers.range) {
-        // Streaming a video back that has already been generated
-        var outputFile = path.resolve(__dirname,'out.mp4')
-        var stats = fs.statSync(outputFile)
-        var size = stats['size']
-        var range = req.headers.range;
+        if (req.headers.range) {
+            // Streaming a video back that has already been generated
+            var outputFile = path.resolve(__dirname,'out.mp4')
+            var stats = fs.statSync(outputFile)
+            var size = stats['size']
+            var range = req.headers.range;
 
-        var parts = range.replace(/bytes=/, '').split('-');
-        var partialstart = parts[0];
-        var partialend = parts[1];
+            var parts = range.replace(/bytes=/, '').split('-');
+            var partialstart = parts[0];
+            var partialend = parts[1];
 
-        var start = parseInt(partialstart, 10);
-        var end = partialend ? parseInt(partialend, 10) : size-1;
-        var chunksize = (end-start)+1;
+            var start = parseInt(partialstart, 10);
+            var end = partialend ? parseInt(partialend, 10) : size-1;
+            var chunksize = (end-start)+1;
 
-        var file = fs.createReadStream(outputFile, {start: start, end: end});
-        res.writeHead(206, {
-            'Content-Range': 'bytes ' + start + '-' + end + '/' + size,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
-            'Content-Type': 'video/mp4'
+            var file = fs.createReadStream(outputFile, {start: start, end: end});
+            res.writeHead(206, {
+                'Content-Range': 'bytes ' + start + '-' + end + '/' + size,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunksize,
+                'Content-Type': 'video/mp4'
+            });
+            file.pipe(res);
+            return;
+        }
+
+        var url = req.query.src;
+        var width = req.query.width;
+        var height = req.query.height;
+        var extra = req.query.frame || '10';
+        doGenerate(convertId, format, url, width, height, extra, function(code) {
+            if (code == 0) {
+                writeResult(convertId, format, res);
+            }
+            else {
+                writeError(convertId, res);
+            }
         });
-        file.pipe(res);
-        return;
     }
-
-    var url = req.query.src;
-    var width = req.query.width;
-    var height = req.query.height;
-    var extra = req.query.frame || '10';
-    doGenerate(convertId, format, url, width, height, extra, function() {
-        writeResult(convertId, format, res);
-    });
+    catch (e) {
+        console.error(e);
+        writeError(convertId, res);
+    }
 });
 
 app.post('/convert/:filename', upload.single('creative'), function (req, res) {
     var convertId = generateConvertId(req);
     console.time(convertId);
-    var format = path.extname(req.params.filename).substring(1);
 
-    // Unpack the zip
-    if (!req.file || req.file.size <= 0) {
-        res.status(500).send({ error: 'No input creative provided' });
-        return;
-    }
-    unpack(convertId, req.file.path, function(unpacked) {
-        var url = 'file:///' + unpacked;
+    try {
+        var format = path.extname(req.params.filename).substring(1);
 
-        var width = req.query.width;
-        var height = req.query.height;
-        var extra = req.query.frame || '10';
-        doGenerate(convertId, format, url, width, height, extra, function() {
-            // Clean up POST data and send result
-            fs.unlink(req.file.path, function() {
-                rimraf('temp/zipcontents', function (err) {
-                    if (err) {
-                        throw err;
-                    }
-                    writeResult(convertId, format, res);
-                });
+        // Unpack the zip
+        if (!req.file || req.file.size <= 0) {
+            res.status(500).send({ error: 'No input creative provided' });
+            return;
+        }
+        unpack(convertId, req.file.path, function (unpacked) {
+            var url = 'file:///' + unpacked;
+
+            var width = req.query.width;
+            var height = req.query.height;
+            var extra = req.query.frame || '10';
+            doGenerate(convertId, format, url, width, height, extra, function (code) {
+                if (code == 0) {
+                    // Clean up POST data and send result
+                    fs.unlink(req.file.path, function () {
+                        rimraf('temp/zipcontents', function (err) {
+                            if (err) {
+                                throw err;
+                            }
+                            writeResult(convertId, format, res);
+                        });
+                    });
+                }
+                else {
+                    writeError(convertId, res);
+                }
             });
         });
-    });
+    }
+    catch (e) {
+        console.error(e);
+        writeError(convertId, res);
+    }
 });
 
 function generateConvertId(req) {
@@ -161,9 +184,8 @@ function doGenerate(convertId, format, url, width, height, extra, callback) {
 
     script.on('exit', function (code) {
         console.log('child process exited with code ' + code);
-        if (code != 0) return;
         console.timeEnd(convertId + '-generate');
-        callback.call(this);
+        callback.call(this, code);
     });
 }
 
@@ -192,6 +214,18 @@ function writeResult(convertId, format, res) {
 
     // Clean up
     fs.unlink(outputFile);
+
+    console.timeEnd(convertId + '-write-output');
+    console.timeEnd(convertId);
+}
+
+function writeError(convertId, res) {
+    console.time(convertId + '-write-error');
+    res.writeHead(500, {
+        'Content-Length': size,
+        'Content-Type': mimeType
+    });
+    res.end();
 
     console.timeEnd(convertId + '-write-output');
     console.timeEnd(convertId);
