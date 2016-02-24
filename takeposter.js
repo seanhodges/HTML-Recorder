@@ -1,6 +1,7 @@
 var system = require('system');
 var page = require('webpage').create();
 
+/*
 phantom.onError = function(msg, trace) {
     var msgStack = ['Phantom error: ' + msg];
     if (trace && trace.length) {
@@ -25,6 +26,7 @@ page.onError = function(msg, trace) {
     console.error(msgStack.join('\n'));
     phantom.exit(1);
 };
+*/
 
 var args = system.args;
 var convertId = args[1];
@@ -71,7 +73,6 @@ function onPageReady() {
     phantom.exit();
 }
 
-var remaining = 100;
 page.open(url, openAttrs, function(status) {
 	if (status === 'success') {
         function checkReadyState() {
@@ -90,12 +91,7 @@ page.open(url, openAttrs, function(status) {
                 } else {
                     checkReadyState();
                 }
-
-                if (remaining-- < 1) {
-                    console.error("Timed out waiting for Edge to initialise");
-                    phantom.exit(1);
-                }
-            }, 10);
+            });
         }
 
         checkReadyState();

@@ -222,12 +222,11 @@ function writeResult(convertId, format, res) {
 function writeError(convertId, res) {
     console.time(convertId + '-write-error');
     res.writeHead(500, {
-        'Content-Length': size,
-        'Content-Type': mimeType
+        'Content-Length': 0
     });
     res.end();
 
-    console.timeEnd(convertId + '-write-output');
+    console.timeEnd(convertId + '-write-error');
     console.timeEnd(convertId);
 }
 
