@@ -1,3 +1,2 @@
 #!/bin/bash
-rm -f temp/poster.png
-phantomjs --web-security=false ./takeposter.js $1 $2
+timeout 2s phantomjs --web-security=false ./takeposter.js $1 $2

@@ -1,6 +1,31 @@
 var system = require('system');
 var page = require('webpage').create();
 
+phantom.onError = function(msg, trace) {
+    var msgStack = ['Phantom error: ' + msg];
+    if (trace && trace.length) {
+        msgStack.push('Trace:');
+        trace.forEach(function(t) {
+            msgStack.push(' -> ' + (t.file || t.sourceURL) + ': ' + t.line + (t.function ? ' (in function ' + t.function +')' : ''));
+        });
+    }
+    console.error(msgStack.join('\n'));
+    phantom.exit(1);
+};
+
+page.onError = function(msg, trace) {
+    var msgStack = ['Page error: ' + msg];
+    if (trace && trace.length) {
+        msgStack.push('Trace:');
+        trace.forEach(function(t) {
+            msgStack.push(' -> ' + t.file + ': ' + t.line + (t.function ? ' (in function "' + t.function +'")' : ''));
+        });
+    }
+
+    console.error(msgStack.join('\n'));
+    phantom.exit(1);
+};
+
 var args = system.args;
 var convertId = args[1];
 var url = args[2];
@@ -16,7 +41,7 @@ var openAttrs = {
 page.viewportSize = { width: 1000, height: 1000 };
 page.offlineStorageQuota = 0;
 
-page.settings.resourceTimeout = '200';
+page.settings.resourceTimeout = '1000';
 page.settings.userAgent = 'WebKit/534.46 Mobile/9A405 Safari/7534.48.3';
 page.settings.XSSAuditingEnabled = false;
 page.settings.webSecurityEnabled = false;
@@ -46,14 +71,14 @@ function onPageReady() {
     phantom.exit();
 }
 
-
+var remaining = 100;
 page.open(url, openAttrs, function(status) {
 	if (status === 'success') {
         function checkReadyState() {
             setTimeout(function () {
                 var readyState = page.evaluate(function () {
                     // Check to see if the stage has loaded
-                    if (!AdobeEdge || !AdobeEdge.compositions || Object.keys(AdobeEdge.compositions).length < 1) return;
+                    if (!window.hasOwnProperty('AdobeEdge') || !AdobeEdge.compositions || Object.keys(AdobeEdge.compositions).length < 1) return;
                     var compId = Object.keys(AdobeEdge.compositions)[0];
                     var comp = compId ? AdobeEdge.getComposition(compId) : null;
                     var stage = comp ? comp.getStage() : null;
@@ -65,12 +90,17 @@ page.open(url, openAttrs, function(status) {
                 } else {
                     checkReadyState();
                 }
-            });
+
+                if (remaining-- < 1) {
+                    console.error("Timed out waiting for Edge to initialise");
+                    phantom.exit(1);
+                }
+            }, 10);
         }
 
         checkReadyState();
 	}
 	else {
-		console.log('Failed: ', status);
+		console.error('Failed: ', status);
 	}
 });

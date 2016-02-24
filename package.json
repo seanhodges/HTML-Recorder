@@ -2,7 +2,7 @@
     "name": "output-convertor",
     "version": "0.0.2",
     "description": "An example module to illustrate the usage of a package.json",
-    "author": "Your Name <you.name@example.org>",
+    "author": "Sean Hodges <seanhodges84@gmail.com>",
     "contributors": [{
         "name": "Foo Bar",
         "email": "foo.bar@example.com"
@@ -26,6 +26,7 @@
     "devDependencies": {
         "mocha": "*",
         "superagent": "*",
+        "superagent-proxy": "*",
         "chai": "2.1.0"
     },
     "private": true
