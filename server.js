@@ -147,7 +147,7 @@ function unpack(convertId, file, successCallback) {
                         readStream.pipe(fs.createWriteStream(rootPath + entry.fileName));
                         readStream.on('end', function() {
                             console.log('Unpacking file: ' + entry.fileName);
-                            if (entry.fileName.indexOf('.html') > -1 && entry.fileName.indexOf('publish') == -1) {
+                            if (entry.fileName.indexOf('.html') > -1 && entry.fileName.indexOf('/') == -1) {
                                 // Found the HTML file
                                 htmlFile = path.resolve(rootPath + entry.fileName);
                                 console.log('Found HTML page: ' + htmlFile);
