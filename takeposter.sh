@@ -3,4 +3,4 @@ timeout="timeout"
 if ["$(which ${timeout})" == ""]; then
     timeout="gtimeout"
 fi
-${timeout} --kill-after=3s 2s phantomjs --web-security=false ./takeposter.js $1 $2
+${timeout} --kill-after=10s 8s phantomjs --web-security=false ./takeposter.js $1 $2
