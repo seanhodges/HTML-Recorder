@@ -7,6 +7,10 @@ var yauzl = require('yauzl');
 var mkdirp = require('mkdirp');
 var rimraf = require('rimraf');
 var uuid = require('uuid');
+var http = require('http');
+
+// Allow this many simultaneous socket connections
+http.globalAgent.maxSockets = 50;
 
 var upload = multer({ dest: 'temp/' });
 var app = express();
