@@ -25,6 +25,7 @@ describe('html edge poster generation', function() {
             .type('form')
             .attach('creative', 'test-resources/MNN487118_Test.zip', 'MNN487118_Test.zip')
             .end(function (err, res) {
+                if (res.text) console.error(res.text);
                 expect(res.status).to.equal(200);
                 done();
             })
@@ -36,6 +37,7 @@ describe('html edge poster generation', function() {
             .type('form')
             .attach('creative', 'test-resources/test-fitting-test.zip', 'test-fitting-test.zip')
             .end(function (err, res) {
+                if (res.text) console.error(res.text);
                 expect(res.status).to.equal(500);
                 done();
             })

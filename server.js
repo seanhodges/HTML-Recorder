@@ -11,98 +11,108 @@ var uuid = require('uuid');
 var upload = multer({ dest: 'temp/' });
 var app = express();
 
-app.get('/convert/:filename', function (req, res) {
+app.get('/convert/:filename', function (req, res, next) {
     var convertId = generateConvertId(req);
     console.time(convertId);
-    try {
-        var format = path.extname(req.params.filename).substring(1);
 
-        if (req.headers.range) {
-            // Streaming a video back that has already been generated
-            var outputFile = path.resolve(__dirname,'out.mp4')
-            var stats = fs.statSync(outputFile)
-            var size = stats['size']
-            var range = req.headers.range;
+    var format = path.extname(req.params.filename).substring(1);
 
-            var parts = range.replace(/bytes=/, '').split('-');
-            var partialstart = parts[0];
-            var partialend = parts[1];
+    if (req.headers.range) {
+        // Streaming a video back that has already been generated
+        var outputFile = path.resolve(__dirname,'out.mp4')
+        var stats = fs.statSync(outputFile)
+        var size = stats['size']
+        var range = req.headers.range;
 
-            var start = parseInt(partialstart, 10);
-            var end = partialend ? parseInt(partialend, 10) : size-1;
-            var chunksize = (end-start)+1;
+        var parts = range.replace(/bytes=/, '').split('-');
+        var partialstart = parts[0];
+        var partialend = parts[1];
 
-            var file = fs.createReadStream(outputFile, {start: start, end: end});
-            res.writeHead(206, {
-                'Content-Range': 'bytes ' + start + '-' + end + '/' + size,
-                'Accept-Ranges': 'bytes',
-                'Content-Length': chunksize,
-                'Content-Type': 'video/mp4'
-            });
-            file.pipe(res);
-            return;
+        var start = parseInt(partialstart, 10);
+        var end = partialend ? parseInt(partialend, 10) : size-1;
+        var chunksize = (end-start)+1;
+
+        var file = fs.createReadStream(outputFile, {start: start, end: end});
+        res.writeHead(206, {
+            'Content-Range': 'bytes ' + start + '-' + end + '/' + size,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunksize,
+            'Content-Type': 'video/mp4'
+        });
+        file.pipe(res);
+        return;
+    }
+
+    var url = req.query.src;
+    var width = req.query.width;
+    var height = req.query.height;
+    var extra = req.query.frame || '10';
+    doGenerate(convertId, format, url, width, height, extra, function(code) {
+        if (code == 0) {
+            writeResult(convertId, format, res);
         }
+        else {
+            return next(new Error('Failed to run script, status code was ' + code));
+        }
+    });
+});
 
-        var url = req.query.src;
+app.post('/convert/:filename', upload.single('creative'), function (req, res, next) {
+    var convertId = generateConvertId(req);
+    res.convertId = convertId;
+    console.time(convertId);
+
+    var format = path.extname(req.params.filename).substring(1);
+
+    // Unpack the zip
+    if (!req.file || req.file.size <= 0) {
+        res.status(500).send({ error: 'No input creative provided' });
+        return;
+    }
+    unpack(convertId, req.file.path, function (unpackPath, htmlFile) {
+        var url = 'file:///' + htmlFile;
+
         var width = req.query.width;
         var height = req.query.height;
         var extra = req.query.frame || '10';
-        doGenerate(convertId, format, url, width, height, extra, function(code) {
-            if (code == 0) {
-                writeResult(convertId, format, res);
-            }
-            else {
-                writeError(convertId, res);
-            }
-        });
-    }
-    catch (e) {
-        console.error(e);
-        writeError(convertId, res);
-    }
-});
+        doGenerate(convertId, format, url, width, height, extra, function (code) {
+            // Clean up POST data and send result
+            console.log('Deleting: ' + unpackPath);
+            rimraf(unpackPath, function (err) {
+                if (err) throw err;
 
-app.post('/convert/:filename', upload.single('creative'), function (req, res) {
-    var convertId = generateConvertId(req);
-    console.time(convertId);
-
-    try {
-        var format = path.extname(req.params.filename).substring(1);
-
-        // Unpack the zip
-        if (!req.file || req.file.size <= 0) {
-            res.status(500).send({ error: 'No input creative provided' });
-            return;
-        }
-        unpack(convertId, req.file.path, function (unpacked) {
-            var url = 'file:///' + unpacked;
-
-            var width = req.query.width;
-            var height = req.query.height;
-            var extra = req.query.frame || '10';
-            doGenerate(convertId, format, url, width, height, extra, function (code) {
                 if (code == 0) {
-                    // Clean up POST data and send result
-                    fs.unlink(req.file.path, function () {
-                        rimraf('temp/zipcontents', function (err) {
-                            if (err) {
-                                throw err;
-                            }
-                            writeResult(convertId, format, res);
-                        });
+                    console.log('Unlinking: ' + req.file.path);
+                    fs.unlink(req.file.path, function (err) {
+                        if (err) throw err;
+
+                        writeResult(convertId, format, res);
                     });
                 }
                 else {
-                    writeError(convertId, res);
+                    return next(new Error('Failed to run script, status code was ' + code));
                 }
             });
         });
-    }
-    catch (e) {
-        console.error(e);
-        writeError(convertId, res);
-    }
+    });
 });
+
+// Default error handler
+app.use(function(err, req, res, next) {
+    var failPath = 'failed/' + path.basename(req.file.path) + ".zip";
+    mkdirp(path.dirname(failPath));
+
+    // Move the failed file and write the error to the output
+    console.log('Moving failed input to ' + failPath);
+    fs.rename(req.file.path, failPath, function () {
+        if (res.headersSent) {
+            return next(err);
+        }
+
+        writeError(res.convertId, res, err);
+    });
+});
+
 
 function generateConvertId(req) {
     var ip = req.ip;
@@ -114,8 +124,8 @@ function generateConvertId(req) {
 
 function unpack(convertId, file, successCallback) {
     console.time(convertId + '-unpack');
-    var rootPath = 'temp/zipcontents/';
-    var resultPath = rootPath;
+    var rootPath = 'temp/zipcontents-' + convertId + '/';
+    var htmlFile = rootPath;
     mkdirp(path.dirname(rootPath));
 
     yauzl.open(file, {lazyEntries: true}, function(err, zipfile) {
@@ -139,8 +149,8 @@ function unpack(convertId, file, successCallback) {
                             console.log('Unpacking file: ' + entry.fileName);
                             if (entry.fileName.indexOf('.html') > -1 && entry.fileName.indexOf('publish') == -1) {
                                 // Found the HTML file
-                                resultPath = path.resolve(rootPath + entry.fileName);
-                                console.log('Found HTML page: ' + resultPath);
+                                htmlFile = path.resolve(rootPath + entry.fileName);
+                                console.log('Found HTML page: ' + htmlFile);
                             }
                             zipfile.readEntry();
                         });
@@ -154,7 +164,7 @@ function unpack(convertId, file, successCallback) {
         zipfile.once('end', function() {
             zipfile.close();
             console.timeEnd(convertId + '-unpack');
-            successCallback.call(this, resultPath);
+            successCallback.call(this, rootPath, htmlFile);
         });
         zipfile.readEntry();
     });
@@ -219,11 +229,13 @@ function writeResult(convertId, format, res) {
     console.timeEnd(convertId);
 }
 
-function writeError(convertId, res) {
+function writeError(convertId, res, err) {
+    console.error(err);
     console.time(convertId + '-write-error');
-    res.writeHead(500, {
-        'Content-Length': 0
-    });
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.writeHead(500);
+    res.write(err.toString());
     res.end();
 
     console.timeEnd(convertId + '-write-error');
