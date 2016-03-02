@@ -8,12 +8,21 @@ var mkdirp = require('mkdirp');
 var rimraf = require('rimraf');
 var uuid = require('uuid');
 var http = require('http');
+var parseArgs = require('minimist');
 
 // Allow this many simultaneous socket connections
 http.globalAgent.maxSockets = 50;
 
 var upload = multer({ dest: 'temp/' });
 var app = express();
+
+if (app.get('env') == 'production') {
+    // Disable logging for production
+    var methods = ['log', 'debug', 'warn', 'time', 'timeEnd'];
+    for (var i = 0; i < methods.length; i++){
+        console[methods[i]] = function(){};
+    }
+}
 
 app.get('/convert/:filename', function (req, res, next) {
     var convertId = generateConvertId(req);
@@ -81,12 +90,12 @@ app.post('/convert/:filename', upload.single('creative'), function (req, res, ne
         var extra = req.query.frame || '10';
         doGenerate(convertId, format, url, width, height, extra, function (code) {
             // Clean up POST data and send result
-            console.log('Deleting: ' + unpackPath);
+            console.debug('Deleting: ' + unpackPath);
             rimraf(unpackPath, function (err) {
                 if (err) throw err;
 
                 if (code == 0) {
-                    console.log('Unlinking: ' + req.file.path);
+                    console.debug('Unlinking: ' + req.file.path);
                     fs.unlink(req.file.path, function (err) {
                         if (err) throw err;
 
@@ -107,7 +116,7 @@ app.use(function(err, req, res, next) {
     mkdirp(path.dirname(failPath));
 
     // Move the failed file and write the error to the output
-    console.log('Moving failed input to ' + failPath);
+    console.debug('Moving failed input to ' + failPath);
     fs.rename(req.file.path, failPath, function () {
         if (res.headersSent) {
             return next(err);
@@ -150,11 +159,11 @@ function unpack(convertId, file, successCallback) {
                         if (err) throw err;
                         readStream.pipe(fs.createWriteStream(rootPath + entry.fileName));
                         readStream.on('end', function() {
-                            console.log('Unpacking file: ' + entry.fileName);
+                            console.debug('Unpacking file: ' + entry.fileName);
                             if (entry.fileName.indexOf('.html') > -1 && entry.fileName.indexOf('/') == -1) {
                                 // Found the HTML file
                                 htmlFile = path.resolve(rootPath + entry.fileName);
-                                console.log('Found HTML page: ' + htmlFile);
+                                console.debug('Found HTML page: ' + htmlFile);
                             }
                             zipfile.readEntry();
                         });
@@ -174,32 +183,67 @@ function unpack(convertId, file, successCallback) {
     });
 }
 
+/** START: Experimental queue solution to limit phantom.js instances **/
+var MAX_PHANTOM_INSTANCES = 8;
+var numberOfPhantomInstances = 0;
+var queue = [];
+function addToQueue(convertId, callback) {
+    if (queue.length == 0 && numberOfPhantomInstances < MAX_PHANTOM_INSTANCES) { // Don't use the queue unless we exceed the max number of instances
+        console.debug('Generating now - ' + convertId);
+        callback.call(this);
+    }
+    else if (queue.length < 1000) {
+        console.debug('Adding to queue - ' + convertId);
+        queue.push(callback);
+    }
+    else {
+        console.error('Maximum queue size exceeded (' + queue.length + ')');
+        throw new Error('Maximum queue size exceeded (' + queue.length + '), killing server to flush queue');
+    }
+}
+setInterval(function() {
+    //console.debug('Checking queue...' + queue.length + ', ' + numberOfPhantomInstances);
+    while (queue.length > 0 && numberOfPhantomInstances < MAX_PHANTOM_INSTANCES) { // Process as much of the queue as we can on each run
+        console.debug('Generating queued job #' + queue.length);
+        var callback = queue.shift();
+        callback.call(this);
+    }
+}, 80);
+/** END: Experimental queue solution for phantom.js limit **/
+
 function doGenerate(convertId, format, url, width, height, extra, callback) {
     console.time(convertId + '-generate');
-    url = url.replace(/ /g, '%20');
-    console.log(format + ' ' + url);
 
-    // Run the appropriate script
-	var scriptName = 'html5video.sh';
-	if (url.indexOf('swf') > -1) scriptName = 'swfvideo.sh';
-    if (url.indexOf('html') > -1 && format == 'png') scriptName = 'takeposter.sh';
+    addToQueue(convertId, function() {
+        numberOfPhantomInstances++;
 
-    console.log(path.resolve(__dirname, scriptName));
-	var spawn = cp.spawn;
-    var script = spawn(path.resolve(__dirname, scriptName), [convertId, url, width, height, format, extra]);
+        url = url.replace(/ /g, '%20');
+        console.debug(format + ' ' + url);
 
-    script.stdout.on('data', function (data) {
-        console.log('stdout: ' + data);
-    });
+        // Run the appropriate script
+        var scriptName = 'html5video.sh';
+        if (url.indexOf('swf') > -1) scriptName = 'swfvideo.sh';
+        if (url.indexOf('html') > -1 && format == 'png') scriptName = 'takeposter.sh';
 
-    script.stderr.on('data', function (data) {
-        console.log('stderr: ' + data);
-    });
+        console.debug(path.resolve(__dirname, scriptName));
+        var spawn = cp.spawn;
+        var script = spawn(path.resolve(__dirname, scriptName), [convertId, url, width, height, format, extra]);
 
-    script.on('exit', function (code) {
-        console.log('child process exited with code ' + code);
-        console.timeEnd(convertId + '-generate');
-        callback.call(this, code);
+        script.stdout.on('data', function (data) {
+            console.debug('stdout: ' + data);
+        });
+
+        script.stderr.on('data', function (data) {
+            console.debug('stderr: ' + data);
+        });
+
+        script.on('exit', function (code) {
+            console.debug('child process exited with code ' + code);
+            console.timeEnd(convertId + '-generate');
+            numberOfPhantomInstances--;
+            console.debug('Number of instances running: ' + numberOfPhantomInstances);
+            callback.call(this, code);
+        });
     });
 }
 
@@ -218,7 +262,7 @@ function writeResult(convertId, format, res) {
 
     var stats = fs.statSync(outputFile);
     var size = stats['size'];
-    console.log(mimeType, size);
+    console.debug(mimeType, size);
 
     res.writeHead(200, {
         'Content-Length': size,
@@ -246,9 +290,10 @@ function writeError(convertId, res, err) {
     console.timeEnd(convertId);
 }
 
-var server = app.listen(17142, function () {
+var argv = parseArgs(process.argv.slice(2));
+var server = app.listen(argv['p'] || argv['port'] || 17142, function () {
 	var host = server.address().address;
 	var port = server.address().port;
 
-	console.log('Output convertor listening at http://%s:%s', host, port);
+	console.info('Output convertor listening at http://%s:%s', host, port);
 });
